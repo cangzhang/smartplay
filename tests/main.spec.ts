@@ -17,11 +17,14 @@ test('main', async ({ page }) => {
   await page.getByRole('button', { name: '登入' }).click();
 
   await page.locator('.left-menu-continer li:nth-child(2)').click();
-  await page.getByRole('button', { name: '搜寻运动、场馆' }).click();
-  await page.getByRole('button', { name: '舞蹈' }).click();
+  // await page.getByRole('button', { name: '搜寻运动、场馆' }).click();
+  // await page.getByRole('button', { name: '舞蹈' }).click();
 
-  await page.getByText('地区/组').click();
-  await page.getByLabel('香港未选取').getByAltText('未选中').click();
-  await page.locator('.global-content-mobile').first().click();
-  await page.getByRole('button', { name: '搜寻', exact: true }).click();
+  // await page.getByText('地区/组').click();
+  // await page.getByLabel('香港未选取').getByAltText('未选中').click();
+  // await page.locator('.global-content-mobile').first().click();
+  // await page.getByRole('button', { name: '搜寻', exact: true }).click();
+
+  const tokenHeader = await page.evaluate(() => localStorage.getItem('webappaccessToken'));
+  console.log('tokenHeader', tokenHeader);
 });
