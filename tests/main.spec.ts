@@ -4,7 +4,8 @@ import nextEnv from '@next/env';
 nextEnv.loadEnvConfig(process.cwd());
 const { USERNAME, PASSWORD } = process.env;
 
-test('login', async ({ page }) => {
+test('main', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.addInitScript(() => {
     const dt = new Date().getFullYear() + new Date().getHours();
     localStorage.setItem('devtools', `${dt}`);
@@ -14,4 +15,13 @@ test('login', async ({ page }) => {
   await page.getByRole('textbox', { name: 'SmartPLAY用戶帳號或別名' }).fill(USERNAME!);
   await page.getByRole('textbox', { name: '密碼' }).fill(PASSWORD!);
   await page.getByRole('button', { name: '登入' }).click();
+
+  await page.locator('.left-menu-continer li:nth-child(2)').click();
+  await page.getByRole('button', { name: '搜寻运动、场馆' }).click();
+  await page.getByRole('button', { name: '舞蹈' }).click();
+
+  await page.getByText('地区/组').click();
+  await page.getByLabel('香港未选取').getByAltText('未选中').click();
+  await page.locator('.global-content-mobile').first().click();
+  await page.getByRole('button', { name: '搜寻', exact: true }).click();
 });
