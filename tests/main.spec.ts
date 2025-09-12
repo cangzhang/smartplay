@@ -25,6 +25,8 @@ test('main', async ({ page }) => {
   // await page.locator('.global-content-mobile').first().click();
   // await page.getByRole('button', { name: '搜寻', exact: true }).click();
 
+  await page.goto('https://www.smartplay.lcsd.gov.hk/facilities/search-result?keywords=&district=CW,EN,SN,WCH&startDate=&typeCode=DNRM&venueCode=&sportCode=DAAC&typeName=%E8%88%9E%E8%B9%88&frmFilterType=&venueSportCode=&isFree=false');
+
   const tokenHeader = await page.evaluate(() => localStorage.getItem('webappaccessToken'));
   console.log('tokenHeader', tokenHeader);
 });
