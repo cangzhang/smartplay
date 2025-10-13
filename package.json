@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@next/env": "^15.5.3",
+    "dayjs": "^1.11.18",
     "playwright": "^1.55.0"
   },
   "scripts": {}
