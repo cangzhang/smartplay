@@ -42,7 +42,12 @@ test('main', async ({ page }) => {
   // if any two consecutive items, which contains text '可供租订', select them 
   const items = await page.$$('.facilities-sc-content-all-item');
   let selected = false;
-  for (let i = 9; i < 13; i++) {
+
+  // const targetIdx = 10;
+  // const endIdx = targetIdx + 4;
+  const targetIdx = 0;
+  const endIdx = items.length - 1;
+  for (let i = targetIdx; i < endIdx; i++) {
     const item = items[i];
     const nextItem = items[i + 1];
     const itemText = await item?.textContent() || '';
@@ -59,10 +64,24 @@ test('main', async ({ page }) => {
   console.log('selected', selected);
   // proceed to confirm
   await page.getByRole('button', { name: '继续' }).click();
+
+  const loginVisible = await page.getByRole('heading', { name: '登入 SmartPLAY' }).isVisible();
+  if (loginVisible) {
+    await page.locator('input[name="pc-login-username"]').fill(USERNAME!);
+    await page.locator('input[name="pc-login-password"]').fill(PASSWORD!);
+    await page.getByRole('button', { name: '登入' }).click();
+    // proceed to confirm again
+    await page.getByRole('button', { name: '继续' }).click();
+  }
+
   // no for booking other instruments
   await page.getByRole('button', { name: '否', exact: true }).click();
   // confirm to payment
   await page.getByRole('button', { name: '继续', exact: true }).click();
+
+  await page.getByRole('button', { name: '未能提供' }).first().click();
+  await page.getByRole('button', { name: '未能提供' }).nth(1).click();
+  await page.getByRole('button', { name: '确认并同意' }).click();
 
   const tokenHeader = await page.evaluate(() => localStorage.getItem('webappaccessToken'));
   // console.log('tokenHeader', tokenHeader);
