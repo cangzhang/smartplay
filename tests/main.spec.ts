@@ -16,20 +16,37 @@ test('dancing', async ({ page }) => {
     localStorage.setItem('webapplanguage', 'zh-cn');
   });
   // dont wait until network is idle, just wait until domcontentloaded
-  await page.goto('https://www.smartplay.lcsd.gov.hk/home', { waitUntil: 'domcontentloaded' });
+  await page.goto('https://www.smartplay.lcsd.gov.hk/home', { waitUntil: 'commit' });
 
-  await expect(page.getByRole('heading', { name: '登入 SmartPLAY' })).toBeVisible();
-  await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(USERNAME!);
-  await page.getByRole('textbox', { name: '密码' }).fill(PASSWORD!);
-  await page.getByRole('button', { name: '登入' }).click();
+  async function login() {
+    await expect(page.getByRole('heading', { name: '登入 SmartPLAY' })).toBeVisible();
+    await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(USERNAME!);
+    await page.getByRole('textbox', { name: '密码' }).fill(PASSWORD!);
+    await page.getByRole('button', { name: '登入' }).click();
+  }
+
+  // wait until 7am
+  async function waitUntil7am() {
+    let now = dayjs();
+    const sevenAm = now.hour(7).minute(0).second(0);
+    while (!now.isAfter(sevenAm)) {
+      await page.waitForTimeout(1_000);
+      now = dayjs();
+    }
+  }
+
+  await waitUntil7am();
+  await login();
 
   await page.locator('.left-menu-continer li:nth-child(2)').click();
-  const sunday = dayjs().day(0).add(7, 'day').format('YYYY-MM-DD');
+  // const sunday = dayjs().day(0).add(7, 'day').format('YYYY-MM-DD');
+  const sunday = dayjs().add(7, 'day').format('YYYY-MM-DD');
 
   // 维多利亚公园 网球
   // https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=70001436&fatId=333&venueName=%E9%A6%99%E6%B8%AF%E7%BD%91%E7%90%83%E4%B8%AD%E5%BF%83&sessionIndex=0&dateIndex=0&playDate=2025-11-02&district=CW,EN,SN,WCH&typeCode=TENC&sportCode=BAGM&frmFilterType=&isFree=false
+  // fatId = 510, 332
+  // const url = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=70001436&fatId=332&sessionIndex=4&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=TENC&sportCode=BAGM&frmFilterType=&isFree=false`;
 
-  // await page.goto('https://www.smartplay.lcsd.gov.hk/facilities/search-result?keywords=&district=CW,EN,SN,WCH&startDate=&typeCode=DNRM&venueCode=&sportCode=DAAC&typeName=%E8%88%9E%E8%B9%88&frmFilterType=&venueSportCode=&isFree=false');
   await page.goto(`https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`, {
     waitUntil: 'domcontentloaded'
   });
@@ -46,16 +63,26 @@ test('dancing', async ({ page }) => {
   const items = await page.$$('.facilities-sc-content-all-item');
   let selected = false;
 
-  // const targetIdx = 10;
-  // const endIdx = targetIdx + 4;
-  const targetIdx = 0;
-  const endIdx = items.length - 1;
+  const targetIdx = 10;
+  const endIdx = targetIdx + 4;
+  // const targetIdx = 0;
+  // const endIdx = items.length - 1;
   for (let i = targetIdx; i < endIdx; i++) {
     const item = items[i];
     const nextItem = items[i + 1];
+
     const itemText = await item?.textContent() || '';
+    const canCheck1 = await item?.$('.session-tag-box-special-primary');
     const nextItemText = await nextItem?.textContent() || '';
+    const canCheck2 = await nextItem?.$('.session-tag-box-special-primary');
+
+    const canCheck = canCheck1 && canCheck2;
+    // can check when item children div with class 'session-tag-box-special-primary' exists
     if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
+      if (!canCheck) {
+        continue;
+      }
+
       await item?.click();
       await nextItem?.click();
       if (item && nextItem) {
