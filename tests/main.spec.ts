@@ -63,6 +63,7 @@ test('dancing', async ({ page }) => {
   const items = await page.$$('.facilities-sc-content-all-item');
   let selected = false;
 
+  // 5pm - 9pm
   const targetIdx = 10;
   const endIdx = targetIdx + 4;
   // const targetIdx = 0;
