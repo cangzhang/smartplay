@@ -50,7 +50,7 @@ async function main() {
           localStorage.setItem('webapplanguage', 'zh-cn');
         });
         await playwrightUtils.blockRequests(page, {
-          urlPatterns: ['.jpg', '.ttf'],
+          urlPatterns: ['.jpg', '.ttf', '.gif'],
         });
       },
     ],
@@ -66,6 +66,15 @@ async function main() {
 
         log.info('Time to login!');
         await login(page, log);
+
+        // if page contains '虚拟等候室'
+        const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
+        if (virtualWaitingRoom) {
+          log.info('Virtual waiting room found, waiting...');
+          // wait until the page contains '虚拟等候室' is not visible
+          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60_000 });
+          log.info('Virtual waiting room disappeared, continuing...');
+        }
 
         // Navigate to facilities menu
         log.info('Navigating to facilities...');
