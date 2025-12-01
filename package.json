@@ -6,7 +6,8 @@
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/bun": "latest",
-    "@types/node": "^24.3.1"
+    "@types/node": "^24.3.1",
+    "@types/node-telegram-bot-api": "^0.64.13"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -15,6 +16,7 @@
     "@next/env": "^15.5.3",
     "crawlee": "^3.15.3",
     "dayjs": "^1.11.18",
+    "node-telegram-bot-api": "^0.66.0",
     "playwright": "^1.55.0"
   },
   "scripts": {
