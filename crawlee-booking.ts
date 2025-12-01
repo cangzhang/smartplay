@@ -9,11 +9,25 @@ const { USERNAME, PASSWORD } = process.env;
 // 每周一早上7点放号
 
 async function main() {
-  console.log('Starting SmartPLAY booking crawler...');
+  console.log('🚀 Starting SmartPLAY booking crawler...');
   
   if (!USERNAME || !PASSWORD) {
     throw new Error('USERNAME and PASSWORD must be set in environment variables');
   }
+
+  // Booking result tracking
+  const bookingResult = {
+    status: 'pending' as 'success' | 'failed' | 'pending',
+    startTime: dayjs(),
+    endTime: null as dayjs.Dayjs | null,
+    targetDate: '',
+    venue: '石塘咀体育馆',
+    facilityType: '舞蹈室/活动室',
+    selectedSlots: [] as string[],
+    slotIndices: [] as number[],
+    loginTime: null as dayjs.Dayjs | null,
+    error: null as string | null,
+  };
 
   const crawler = new PlaywrightCrawler({
     launchContext: {
@@ -51,6 +65,7 @@ async function main() {
         await page.waitForTimeout(2000);
         
         const sunday = dayjs().add(7, 'day').format('YYYY-MM-DD');
+        bookingResult.targetDate = sunday;
         log.info(`Target date: ${sunday}`);
         
         const facilitiesUrl = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`;
@@ -103,12 +118,22 @@ async function main() {
               }
 
               log.info(`Selecting slots at index ${i} and ${i + 1}`);
+              
+              // Get time slot information
+              const slot1Text = await item.textContent() || '';
+              const slot2Text = await nextItem.textContent() || '';
+              bookingResult.slotIndices = [i, i + 1];
+              bookingResult.selectedSlots = [
+                (slot1Text || '').trim().split('\n')[0] || '',
+                (slot2Text || '').trim().split('\n')[0] || ''
+              ];
+              
               await item.click();
               await page.waitForTimeout(200);
               await nextItem.click();
               await page.waitForTimeout(200);
               selectedSlots = true;
-              log.info(`✓ Successfully selected slots`);
+              log.info(`✅ Successfully selected slots`);
               break;
             }
           }
@@ -149,11 +174,19 @@ async function main() {
             await page.waitForTimeout(500);
             await page.getByRole('button', { name: '确认并同意' }).click();
 
-            log.info('✓ Booking completed successfully!');
+            bookingResult.status = 'success';
+            bookingResult.endTime = dayjs();
+            log.info('✅ Booking completed successfully!');
           } else {
-            log.error('✗ No available consecutive slots found');
+            bookingResult.status = 'failed';
+            bookingResult.endTime = dayjs();
+            bookingResult.error = 'No available consecutive slots found';
+            log.error('❌ No available consecutive slots found');
           }
         } catch (error) {
+          bookingResult.status = 'failed';
+          bookingResult.endTime = dayjs();
+          bookingResult.error = String(error);
           log.error(`Error during booking process: ${error}`);
           throw error;
         }
@@ -205,13 +238,66 @@ async function main() {
     await page.getByRole('button', { name: '登入' }).click();
     
     await page.waitForTimeout(3000);
-    log.info('✓ Login successful');
+    bookingResult.loginTime = dayjs();
+    log.info('✅ Login successful');
   }
 
   // Start crawling
   await crawler.run(['https://www.smartplay.lcsd.gov.hk/home']);
   
-  console.log('Crawler finished!');
+  // Print beautiful summary
+  printBookingSummary(bookingResult);
+}
+
+function printBookingSummary(result: any) {
+  const duration = result.endTime 
+    ? result.endTime.diff(result.startTime, 'second')
+    : dayjs().diff(result.startTime, 'second');
+  
+  const durationFormatted = duration >= 60 
+    ? `${Math.floor(duration / 60)}分${duration % 60}秒`
+    : `${duration}秒`;
+
+  console.log('\n' + '='.repeat(60));
+  console.log('🎯 SmartPLAY 预订结果摘要');
+  console.log('='.repeat(60));
+  
+  if (result.status === 'success') {
+    console.log('📊 状态: ✅ 预订成功');
+  } else {
+    console.log('📊 状态: ❌ 预订失败');
+  }
+  
+  console.log(`🏢 场馆: ${result.venue}`);
+  console.log(`🏃 设施类型: ${result.facilityType}`);
+  console.log(`📅 目标日期: ${result.targetDate || 'N/A'}`);
+  
+  if (result.selectedSlots.length > 0) {
+    console.log(`⏰ 已选时间段:`);
+    result.selectedSlots.forEach((slot: string, index: number) => {
+      console.log(`   ${index + 1}. ${slot} (索引 ${result.slotIndices[index]})`);
+    });
+  } else {
+    console.log(`⏰ 已选时间段: 无`);
+  }
+  
+  console.log(`👤 用户: ${USERNAME}`);
+  console.log(`🔐 登录时间: ${result.loginTime ? result.loginTime.format('HH:mm:ss') : 'N/A'}`);
+  console.log(`  ⏱️ 开始时间: ${result.startTime.format('YYYY-MM-DD HH:mm:ss')}`);
+  console.log(`  ⏱️ 结束时间: ${result.endTime ? result.endTime.format('YYYY-MM-DD HH:mm:ss') : 'N/A'}`);
+  console.log(`⌛ 总耗时: ${durationFormatted}`);
+  
+  if (result.error) {
+    console.log(`⚠️  错误信息: ${result.error}`);
+  }
+  
+  console.log('='.repeat(60));
+  
+  if (result.status === 'success') {
+    console.log('🎉 恭喜！预订成功完成！');
+  }
+  
+  console.log('='.repeat(60) + '\n');
 }
 
 // Run the main function
