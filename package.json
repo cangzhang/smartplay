@@ -13,8 +13,13 @@
   },
   "dependencies": {
     "@next/env": "^15.5.3",
+    "crawlee": "^3.15.3",
     "dayjs": "^1.11.18",
     "playwright": "^1.55.0"
   },
-  "scripts": {}
+  "scripts": {
+    "book": "bun run crawlee-booking.ts",
+    "test": "bunx playwright test",
+    "test:crawlee": "bunx playwright test crawlee.spec.ts"
+  }
 }
