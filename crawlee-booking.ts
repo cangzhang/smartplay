@@ -1,12 +1,14 @@
-import { PlaywrightCrawler } from 'crawlee';
+import { PlaywrightCrawler, playwrightUtils } from 'crawlee';
 import nextEnv from '@next/env';
 import dayjs from 'dayjs';
 import TelegramBot from 'node-telegram-bot-api';
 
 nextEnv.loadEnvConfig(process.cwd());
-const { USERNAME, PASSWORD } = process.env;
 
-const bot = new TelegramBot(process.env.TG_BOT_TOKEN!, { polling: true });
+const { USERNAME, PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
+const bot = new TelegramBot(TG_BOT_TOKEN!, { polling: true });
+
+const isDev = process.env.NODE_ENV !== 'production';
 
 // 需求：预定每周日晚上4～8点，任意连续两个小时的舞蹈室或者活动室（大），石塘咀体育馆
 // 每周一早上7点放号
@@ -35,8 +37,8 @@ async function main() {
   const crawler = new PlaywrightCrawler({
     launchContext: {
       launchOptions: {
-        headless: false, // Set to true for production
-        devtools: false,
+        headless: !isDev,
+        devtools: isDev,
       },
     },
     preNavigationHooks: [
@@ -46,6 +48,9 @@ async function main() {
           const dt = new Date().getFullYear() + new Date().getHours();
           localStorage.setItem('devtools', `${dt}`);
           localStorage.setItem('webapplanguage', 'zh-cn');
+        });
+        await playwrightUtils.blockRequests(page, {
+          urlPatterns: ['.jpg', '.ttf'],
         });
       },
     ],
@@ -310,12 +315,15 @@ async function printBookingSummary(result: any) {
   console.log('\n' + summary + '\n');
 
   // Send to Telegram
-  await bot.sendMessage(process.env.TG_CHAT_ID!, summary);
+  await bot.sendMessage(TG_CHAT_ID!, summary);
 }
 
-// Run the main function
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
-
+(async function () {
+  try {
+    await main();
+    process.exit(0);
+  } catch (error) {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  }
+})()
