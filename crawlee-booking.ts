@@ -1,7 +1,12 @@
 import { PlaywrightCrawler, playwrightUtils } from 'crawlee';
 import nextEnv from '@next/env';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import TelegramBot from 'node-telegram-bot-api';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 nextEnv.loadEnvConfig(process.cwd());
 
@@ -9,6 +14,9 @@ const { USERNAME, PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
 const bot = new TelegramBot(TG_BOT_TOKEN!, { polling: true });
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+// const TARGET_IDX = 10; // 5pm - 9pm slots
+const TARGET_IDX = 0;
 
 // 需求：预定每周日晚上4～8点，任意连续两个小时的舞蹈室或者活动室（大），石塘咀体育馆
 // 每周一早上7点放号
@@ -50,7 +58,7 @@ async function main() {
           localStorage.setItem('webapplanguage', 'zh-cn');
         });
         await playwrightUtils.blockRequests(page, {
-          urlPatterns: ['.jpg', '.ttf', '.gif'],
+          urlPatterns: ['.jpg', '.ttf', '.gif', '.png'],
         });
       },
     ],
@@ -67,12 +75,22 @@ async function main() {
         log.info('Time to login!');
         await login(page, log);
 
+
+        // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
+        // if timeout, continue
+        try {
+          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 20_000 });
+          log.info('Waiting room found, continuing...');
+        } catch (error) {
+          log.info('Waiting room not found, continuing...');
+        }
+
         // if page contains '虚拟等候室'
         const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
         if (virtualWaitingRoom) {
           log.info('Virtual waiting room found, waiting...');
           // wait until the page contains '虚拟等候室' is not visible
-          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60_000 });
+          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 600_000 });
           log.info('Virtual waiting room disappeared, continuing...');
         }
 
@@ -111,11 +129,10 @@ async function main() {
           log.info(`Found ${items.length} time slots`);
 
           // Target 5pm - 9pm slots (indices 10-13)
-          const targetIdx = 10;
-          const endIdx = Math.min(targetIdx + 4, items.length - 1);
+          const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
 
           let selectedSlots = false;
-          for (let i = targetIdx; i < endIdx; i++) {
+          for (let i = TARGET_IDX; i < endIdx; i++) {
             const item = items[i];
             const nextItem = items[i + 1];
 
@@ -161,17 +178,7 @@ async function main() {
             await page.getByRole('button', { name: '继续' }).click();
             await page.waitForTimeout(2000);
 
-            // Check if login modal appears again
-            const loginVisible = await page.getByRole('heading', { name: '登入 SmartPLAY' }).isVisible().catch(() => false);
-            if (loginVisible) {
-              log.info('Login modal appeared again, logging in...');
-              await page.locator('input[name="pc-login-username"]').fill(USERNAME!);
-              await page.locator('input[name="pc-login-password"]').fill(PASSWORD!);
-              await page.getByRole('button', { name: '登入' }).click();
-              await page.waitForTimeout(2000);
-              await page.getByRole('button', { name: '继续' }).click();
-              await page.waitForTimeout(2000);
-            }
+
 
             // Answer no for booking other instruments
             log.info('Answering questions...');
@@ -216,29 +223,30 @@ async function main() {
 
   // Helper function to wait until 7am
   async function waitUntil7am(page: any, log: any) {
-    let now = dayjs();
-    const sevenAm = now.hour(7).minute(0).second(0);
+    const HK_TIMEZONE = 'Asia/Hong_Kong'; // UTC+8
+    let now = dayjs().tz(HK_TIMEZONE);
+    const sevenAm = now.hour(7).minute(0).second(0).millisecond(0);
 
     if (now.isAfter(sevenAm)) {
-      log.info('Already past 7am, proceeding immediately');
+      log.info('Already past 7am HKT, proceeding immediately');
       return;
     }
 
     const waitTime = sevenAm.diff(now, 'milliseconds');
-    log.info(`Waiting until 7am (${Math.round(waitTime / 1000 / 60)} minutes)...`);
+    log.info(`Waiting until 7am HKT (${Math.round(waitTime / 1000 / 60)} minutes)...`);
 
     while (!now.isAfter(sevenAm)) {
       await page.waitForTimeout(1_000);
-      now = dayjs();
+      now = dayjs().tz(HK_TIMEZONE);
 
       // Log progress every minute
       if (now.second() === 0) {
         const remaining = sevenAm.diff(now, 'minutes');
-        log.info(`${remaining} minutes until 7am...`);
+        log.info(`${remaining} minutes until 7am HKT...`);
       }
     }
 
-    log.info('It\'s 7am! Starting booking process...');
+    log.info('It\'s 7am HKT! Starting booking process...');
   }
 
   // Helper function to login
@@ -254,7 +262,7 @@ async function main() {
     log.info('Clicking login button...');
     await page.getByRole('button', { name: '登入' }).click();
 
-    await page.waitForTimeout(3000);
+    // await page.waitForTimeout(3000);
     bookingResult.loginTime = dayjs();
     log.info('✅ Login successful');
   }
