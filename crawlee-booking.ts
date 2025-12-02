@@ -187,9 +187,6 @@ async function main() {
               log.info('No modal found, continuing...');
             }
             if (modalFound) {
-              await page.getByRole('button', { name: '确认' }).click();
-              // throw new Error('有关段节现时只供阅览，未可预订');
-              // send summary to telegram, stop the crawler
               bookingResult.status = 'failed';
               bookingResult.endTime = dayjs();
               bookingResult.error = `${bookingResult.targetDate} 有关段节现时只供阅览，未可预订`;
