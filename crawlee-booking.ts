@@ -15,8 +15,8 @@ const bot = new TelegramBot(TG_BOT_TOKEN!, { polling: true });
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// const TARGET_IDX = 10; // 5pm - 9pm slots
-const TARGET_IDX = 0;
+const TARGET_IDX = 10; // 5pm - 9pm slots
+// const TARGET_IDX = 0;
 
 // 需求：预定每周日晚上4～8点，任意连续两个小时的舞蹈室或者活动室（大），石塘咀体育馆
 // 每周一早上7点放号
@@ -75,11 +75,10 @@ async function main() {
         log.info('Time to login!');
         await login(page, log);
 
-
         // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
         // if timeout, continue
         try {
-          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 20_000 });
+          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 10_000 });
           log.info('Waiting room found, continuing...');
         } catch (error) {
           log.info('Waiting room not found, continuing...');
@@ -178,7 +177,25 @@ async function main() {
             await page.getByRole('button', { name: '继续' }).click();
             await page.waitForTimeout(2000);
 
-
+            let modalFound = false;
+            try {
+              // including text '有关段节现时只供阅览，未可预订'
+              await page.getByRole('dialog', { name: /有关段节现时只供阅览，未可预订/ }).isVisible();
+              log.info('Modal found, clicking confirm button...');
+              modalFound = true;
+            } catch (error) {
+              log.info('No modal found, continuing...');
+            }
+            if (modalFound) {
+              await page.getByRole('button', { name: '确认' }).click();
+              // throw new Error('有关段节现时只供阅览，未可预订');
+              // send summary to telegram, stop the crawler
+              bookingResult.status = 'failed';
+              bookingResult.endTime = dayjs();
+              bookingResult.error = `${bookingResult.targetDate} 有关段节现时只供阅览，未可预订`;
+              await printBookingSummary(bookingResult);
+              process.exit(0);
+            }
 
             // Answer no for booking other instruments
             log.info('Answering questions...');
