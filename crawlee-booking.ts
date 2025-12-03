@@ -78,7 +78,7 @@ async function main() {
         // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
         // if timeout, continue
         try {
-          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 10_000 });
+          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 60 * 1000 });
           log.info('Waiting room found, continuing...');
         } catch (error) {
           log.info('Waiting room not found, continuing...');
@@ -89,7 +89,7 @@ async function main() {
         if (virtualWaitingRoom) {
           log.info('Virtual waiting room found, waiting...');
           // wait until the page contains '虚拟等候室' is not visible
-          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 600_000 });
+          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
           log.info('Virtual waiting room disappeared, continuing...');
         }
 
