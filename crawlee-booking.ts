@@ -15,6 +15,11 @@ const bot = new TelegramBot(TG_BOT_TOKEN!, { polling: true });
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+// Helper function to get formatted timestamp
+function getTimestamp(): string {
+  return dayjs().tz('Asia/Hong_Kong').format('YYYY-MM-DD HH:mm:ss.SSS');
+}
+
 const TARGET_IDX = 10; // 5pm - 9pm slots
 // const TARGET_IDX = 0;
 
@@ -22,7 +27,7 @@ const TARGET_IDX = 10; // 5pm - 9pm slots
 // 每周一早上7点放号
 
 async function main() {
-  console.log('🚀 Starting SmartPLAY booking crawler...');
+  console.log(`[${getTimestamp()}] 🚀 Starting SmartPLAY booking crawler...`);
 
   if (!USERNAME || !PASSWORD) {
     throw new Error('USERNAME and PASSWORD must be set in environment variables');
@@ -46,7 +51,7 @@ async function main() {
     launchContext: {
       launchOptions: {
         headless: !isDev,
-        devtools: isDev,
+        devtools: false,
       },
     },
     preNavigationHooks: [
@@ -63,44 +68,44 @@ async function main() {
       },
     ],
     requestHandler: async ({ page, request, log }) => {
-      log.info(`Processing ${request.url}`);
+      log.info(`[${getTimestamp()}] Processing ${request.url}`);
 
       const url = request.url;
 
       // Handle home page
-      if (url.includes('/home')) {
-        log.info('On home page, waiting until 7am...');
+      if (!url.includes('/facilities/select/court')) {
+        log.info(`[${getTimestamp()}] Not on facility selection page, waiting until 7am...`);
         await waitUntil7am(page, log);
 
-        log.info('Time to login!');
+        log.info(`[${getTimestamp()}] Time to login!`);
         await login(page, log);
 
         // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
         // if timeout, continue
         try {
           await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 60 * 1000 });
-          log.info('Waiting room found, continuing...');
+          log.info(`[${getTimestamp()}] Waiting room found, continuing...`);
         } catch (error) {
-          log.info('Waiting room not found, continuing...');
+          log.info(`[${getTimestamp()}] Waiting room not found, continuing...`);
         }
 
         // if page contains '虚拟等候室'
         const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
         if (virtualWaitingRoom) {
-          log.info('Virtual waiting room found, waiting...');
+          log.info(`[${getTimestamp()}] Virtual waiting room found, waiting...`);
           // wait until the page contains '虚拟等候室' is not visible
           await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
-          log.info('Virtual waiting room disappeared, continuing...');
+          log.info(`[${getTimestamp()}] Virtual waiting room disappeared, continuing...`);
         }
 
         // Navigate to facilities menu
-        log.info('Navigating to facilities...');
+        log.info(`[${getTimestamp()}] Navigating to facilities...`);
         await page.locator('.left-menu-continer li:nth-child(2)').click();
         await page.waitForTimeout(2000);
 
-        const sunday = dayjs().add(7, 'day').format('YYYY-MM-DD');
+        const sunday = dayjs().add(6, 'day').format('YYYY-MM-DD');
         bookingResult.targetDate = sunday;
-        log.info(`Target date: ${sunday}`);
+        log.info(`[${getTimestamp()}] Target date: ${sunday}`);
 
         const facilitiesUrl = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`;
 
@@ -109,15 +114,15 @@ async function main() {
 
       // Handle facility selection page
       if (url.includes('/facilities/select/court')) {
-        log.info('On facility selection page');
+        log.info(`[${getTimestamp()}] On facility selection page`);
 
         try {
           await page.waitForSelector('.facilities-sc-content-all-item', { timeout: 60_000 });
-          log.info('Facility items loaded');
+          log.info(`[${getTimestamp()}] Facility items loaded`);
 
           // Uncheck all selected items
           const selectedTags = await page.$$('.session-tag-box-select');
-          log.info(`Found ${selectedTags.length} pre-selected tags, unchecking...`);
+          log.info(`[${getTimestamp()}] Found ${selectedTags.length} pre-selected tags, unchecking...`);
           for (const selected of selectedTags) {
             await selected.click();
             await page.waitForTimeout(100);
@@ -125,7 +130,7 @@ async function main() {
 
           // Find and select two consecutive available slots
           const items = await page.$$('.facilities-sc-content-all-item');
-          log.info(`Found ${items.length} time slots`);
+          log.info(`[${getTimestamp()}] Found ${items.length} time slots`);
 
           // Target 5pm - 9pm slots (indices 10-13)
           const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
@@ -146,11 +151,11 @@ async function main() {
 
             if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
               if (!canCheck) {
-                log.info(`Slots at ${i} and ${i + 1} are available but not checkable`);
+                log.info(`[${getTimestamp()}] Slots at ${i} and ${i + 1} are available but not checkable`);
                 continue;
               }
 
-              log.info(`Selecting slots at index ${i} and ${i + 1}`);
+              log.info(`[${getTimestamp()}] Selecting slots at index ${i} and ${i + 1}`);
 
               // Get time slot information
               const slot1Text = await item.textContent() || '';
@@ -166,46 +171,47 @@ async function main() {
               await nextItem.click();
               await page.waitForTimeout(200);
               selectedSlots = true;
-              log.info(`✅ Successfully selected slots`);
+              log.info(`[${getTimestamp()}] ✅ Successfully selected slots`);
               break;
             }
           }
 
           if (selectedSlots) {
             // Proceed to confirm
-            log.info('Clicking continue button...');
+            log.info(`[${getTimestamp()}] Clicking continue button...`);
             await page.getByRole('button', { name: '继续' }).click();
             await page.waitForTimeout(2000);
 
-            let modalFound = false;
-            try {
-              // including text '有关段节现时只供阅览，未可预订'
-              await page.getByRole('dialog', { name: /有关段节现时只供阅览，未可预订/ }).isVisible();
-              log.info('Modal found, clicking confirm button...');
-              modalFound = true;
-            } catch (error) {
-              log.info('No modal found, continuing...');
-            }
-            if (modalFound) {
-              bookingResult.status = 'failed';
-              bookingResult.endTime = dayjs();
-              bookingResult.error = `${bookingResult.targetDate} 有关段节现时只供阅览，未可预订`;
-              await printBookingSummary(bookingResult);
-              process.exit(0);
-            }
+            // let modalFound = false;
+            // try {
+            //   // including text '有关段节现时只供阅览，未可预订'
+            //   await page.getByRole('dialog', { name: /有关段节现时只供阅览，未可预订/ }).isVisible();
+            //   log.info(`[${getTimestamp()}] Modal found, clicking confirm button...`);
+            //   modalFound = true;
+            // } catch (error) {
+            //   log.info(`[${getTimestamp()}] No modal found, continuing...`);
+            // }
+            // if (modalFound) {
+            //   bookingResult.status = 'failed';
+            //   bookingResult.endTime = dayjs();
+            //   bookingResult.error = `${bookingResult.targetDate} 有关段节现时只供阅览，未可预订`;
+            //   // await printBookingSummary(bookingResult);
+            //   // process.exit(0);
+            //   await page.waitForTimeout(10000);
+            // }
 
             // Answer no for booking other instruments
-            log.info('Answering questions...');
+            log.info(`[${getTimestamp()}] Answering questions...`);
             await page.getByRole('button', { name: '否', exact: true }).click();
             await page.waitForTimeout(1000);
 
             // Confirm to payment
-            log.info('Proceeding to payment...');
+            log.info(`[${getTimestamp()}] Proceeding to payment...`);
             await page.getByRole('button', { name: '继续', exact: true }).click();
             await page.waitForTimeout(2000);
 
             // Handle health declaration
-            log.info('Completing health declaration...');
+            log.info(`[${getTimestamp()}] Completing health declaration...`);
             await page.getByRole('button', { name: '未能提供' }).first().click();
             await page.waitForTimeout(500);
             await page.getByRole('button', { name: '未能提供' }).nth(1).click();
@@ -214,18 +220,18 @@ async function main() {
 
             bookingResult.status = 'success';
             bookingResult.endTime = dayjs();
-            log.info('✅ Booking completed successfully!');
+            log.info(`[${getTimestamp()}] ✅ Booking completed successfully!`);
           } else {
             bookingResult.status = 'failed';
             bookingResult.endTime = dayjs();
             bookingResult.error = 'No available consecutive slots found';
-            log.error('❌ No available consecutive slots found');
+            log.error(`[${getTimestamp()}] ❌ No available consecutive slots found`);
           }
         } catch (error) {
           bookingResult.status = 'failed';
           bookingResult.endTime = dayjs();
           bookingResult.error = String(error);
-          log.error(`Error during booking process: ${error}`);
+          log.error(`[${getTimestamp()}] Error during booking process: ${error}`);
           throw error;
         }
       }
@@ -242,12 +248,12 @@ async function main() {
     const sevenAm = now.hour(7).minute(0).second(0).millisecond(0);
 
     if (now.isAfter(sevenAm)) {
-      log.info('Already past 7am HKT, proceeding immediately');
+      log.info(`[${getTimestamp()}] Already past 7am HKT, proceeding immediately`);
       return;
     }
 
     const waitTime = sevenAm.diff(now, 'milliseconds');
-    log.info(`Waiting until 7am HKT (${Math.round(waitTime / 1000 / 60)} minutes)...`);
+    log.info(`[${getTimestamp()}] Waiting until 7am HKT (${Math.round(waitTime / 1000 / 60)} minutes)...`);
 
     while (!now.isAfter(sevenAm)) {
       await page.waitForTimeout(1_000);
@@ -256,29 +262,31 @@ async function main() {
       // Log progress every minute
       if (now.second() === 0) {
         const remaining = sevenAm.diff(now, 'minutes');
-        log.info(`${remaining} minutes until 7am HKT...`);
+        log.info(`[${getTimestamp()}] ${remaining} minutes until 7am HKT...`);
       }
     }
 
-    log.info('It\'s 7am HKT! Starting booking process...');
+    log.info(`[${getTimestamp()}] It's 7am HKT! Starting booking process...`);
   }
 
   // Helper function to login
   async function login(page: any, log: any) {
-    log.info('Waiting for login form...');
+    await page.reload();
+
+    log.info(`[${getTimestamp()}] Waiting for login form...`);
     // Wait for the login heading to be visible
     await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
 
-    log.info('Filling credentials...');
+    log.info(`[${getTimestamp()}] Filling credentials...`);
     await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(USERNAME!);
     await page.getByRole('textbox', { name: '密码' }).fill(PASSWORD!);
 
-    log.info('Clicking login button...');
+    log.info(`[${getTimestamp()}] Clicking login button...`);
     await page.getByRole('button', { name: '登入' }).click();
 
     // await page.waitForTimeout(3000);
     bookingResult.loginTime = dayjs();
-    log.info('✅ Login successful');
+    log.info(`[${getTimestamp()}] ✅ Login successful`);
   }
 
   // Start crawling
@@ -343,7 +351,7 @@ async function printBookingSummary(result: any) {
   const summary = lines.join('\n');
 
   // Print to console
-  console.log('\n' + summary + '\n');
+  console.log(`[${getTimestamp()}]\n` + summary + '\n');
 
   // Send to Telegram
   await bot.sendMessage(TG_CHAT_ID!, summary);
@@ -354,7 +362,7 @@ async function printBookingSummary(result: any) {
     await main();
     process.exit(0);
   } catch (error) {
-    console.error('Fatal error:', error);
+    console.error(`[${getTimestamp()}] Fatal error:`, error);
     process.exit(1);
   }
 })()
