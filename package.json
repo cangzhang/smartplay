@@ -21,8 +21,6 @@
     "playwright": "^1.55.0"
   },
   "scripts": {
-    "book": "bun run crawlee-booking.ts",
-    "test": "bunx playwright test",
-    "test:crawlee": "bunx playwright test crawlee.spec.ts"
+    "book": "bun run booking.ts"
   }
 }
