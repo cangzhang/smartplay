@@ -51,7 +51,7 @@ async function main() {
     launchContext: {
       launchOptions: {
         headless: !isDev,
-        devtools: isDev,
+        devtools: false,
       },
     },
     preNavigationHooks: [
@@ -78,15 +78,13 @@ async function main() {
         queueNum = json.data?.queueNum;
         log.info(`[${getTimestamp()}] queueNum: ${queueNum}`);
         route.fulfill({
-          status: 200,
-          body: JSON.stringify({
-            queue: json.queue,
-          }),
+          status: response.status(),
+          body: JSON.stringify(json),
         });
       });
 
       // Handle home page
-      if (!url.includes('/facilities/select/court')) {
+      if (url.includes('/home')) {
         log.info(`[${getTimestamp()}] Not on facility selection page, waiting until 7am...`);
         await waitUntil7am(page, log);
 
@@ -384,17 +382,13 @@ async function printBookingSummary(result: any) {
 (async function () {
   try {
     await main();
+    exit(0);
   } catch (error) {
     console.error(`[${getTimestamp()}] Fatal error:`, error);
-  } finally {
-    exit();
+    exit(1);
   }
 })()
 
-function exit() {
-  if (isDev) {
-    return;
-  }
-
-  process.exit(0);
+function exit(code: number) {
+  process.exit(code);
 }
