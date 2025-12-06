@@ -51,7 +51,7 @@ async function main() {
     launchContext: {
       launchOptions: {
         headless: !isDev,
-        devtools: false,
+        devtools: isDev,
       },
     },
     preNavigationHooks: [
@@ -69,8 +69,21 @@ async function main() {
     ],
     requestHandler: async ({ page, request, log }) => {
       log.info(`[${getTimestamp()}] Processing ${request.url}`);
-
       const url = request.url;
+      let queueNum = null;
+      // intercept request to /rest/patron/api/v1/publ/queue
+      await page.route('https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue', async (route) => {
+        const response = await route.fetch();
+        const json = await response.json();
+        queueNum = json.data?.queueNum;
+        log.info(`[${getTimestamp()}] queueNum: ${queueNum}`);
+        route.fulfill({
+          status: 200,
+          body: JSON.stringify({
+            queue: json.queue,
+          }),
+        });
+      });
 
       // Handle home page
       if (!url.includes('/facilities/select/court')) {
@@ -79,23 +92,55 @@ async function main() {
 
         log.info(`[${getTimestamp()}] Time to login!`);
         await login(page, log);
+        // wait until queueNum is not null
+        while (!queueNum) {
+          await page.waitForTimeout(1000);
+          log.info(`[${getTimestamp()}] Waiting for queueNum...`);
+        }
+        log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
+
+        // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
+        const queueResponse = await page.request.get(
+          `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
+          {
+            headers: {
+              'User-Agent': await page.evaluate(() => navigator.userAgent),
+              'Accept': 'application/json',
+              'Referer': page.url(),
+            }
+          }
+        );
+        const queueJson = await queueResponse.json();
+        log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
+
+        // let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
+        // log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
+        // await page.goto(waitingRoomUrl);
+        // if there was a modal. click on cancel button
+
 
         // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
         // if timeout, continue
-        try {
-          await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 60 * 1000 });
-          log.info(`[${getTimestamp()}] Waiting room found, continuing...`);
-        } catch (error) {
-          log.info(`[${getTimestamp()}] Waiting room not found, continuing...`);
-        }
+        // try {
+        //   await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 60 * 1000 });
+        //   log.info(`[${getTimestamp()}] Waiting room found, continuing...`);
+        // } catch (error) {
+        //   log.info(`[${getTimestamp()}] Waiting room not found, continuing...`);
+        // }
 
-        // if page contains '虚拟等候室'
-        const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
-        if (virtualWaitingRoom) {
-          log.info(`[${getTimestamp()}] Virtual waiting room found, waiting...`);
-          // wait until the page contains '虚拟等候室' is not visible
-          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
-          log.info(`[${getTimestamp()}] Virtual waiting room disappeared, continuing...`);
+        let shouldWait = true;
+        if (!queueJson?.data) {
+          shouldWait = false;
+        }
+        if (shouldWait) {
+          // if page contains '虚拟等候室'
+          const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
+          if (virtualWaitingRoom) {
+            log.info(`[${getTimestamp()}] Virtual waiting room found, waiting...`);
+            // wait until the page contains '虚拟等候室' is not visible
+            await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
+            log.info(`[${getTimestamp()}] Virtual waiting room disappeared, continuing...`);
+          }
         }
 
         // Navigate to facilities menu
@@ -181,25 +226,6 @@ async function main() {
             log.info(`[${getTimestamp()}] Clicking continue button...`);
             await page.getByRole('button', { name: '继续' }).click();
             await page.waitForTimeout(2000);
-
-            // let modalFound = false;
-            // try {
-            //   // including text '有关段节现时只供阅览，未可预订'
-            //   await page.getByRole('dialog', { name: /有关段节现时只供阅览，未可预订/ }).isVisible();
-            //   log.info(`[${getTimestamp()}] Modal found, clicking confirm button...`);
-            //   modalFound = true;
-            // } catch (error) {
-            //   log.info(`[${getTimestamp()}] No modal found, continuing...`);
-            // }
-            // if (modalFound) {
-            //   bookingResult.status = 'failed';
-            //   bookingResult.endTime = dayjs();
-            //   bookingResult.error = `${bookingResult.targetDate} 有关段节现时只供阅览，未可预订`;
-            //   // await printBookingSummary(bookingResult);
-            //   // process.exit(0);
-            //   await page.waitForTimeout(10000);
-            // }
-
             // Answer no for booking other instruments
             log.info(`[${getTimestamp()}] Answering questions...`);
             await page.getByRole('button', { name: '否', exact: true }).click();
@@ -272,7 +298,6 @@ async function main() {
   // Helper function to login
   async function login(page: any, log: any) {
     await page.reload();
-
     log.info(`[${getTimestamp()}] Waiting for login form...`);
     // Wait for the login heading to be visible
     await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
@@ -294,7 +319,6 @@ async function main() {
 
   // Print beautiful summary
   await printBookingSummary(bookingResult);
-  process.exit(0);
 }
 
 async function printBookingSummary(result: any) {
@@ -360,9 +384,17 @@ async function printBookingSummary(result: any) {
 (async function () {
   try {
     await main();
-    process.exit(0);
   } catch (error) {
     console.error(`[${getTimestamp()}] Fatal error:`, error);
-    process.exit(1);
+  } finally {
+    exit();
   }
 })()
+
+function exit() {
+  if (isDev) {
+    return;
+  }
+
+  process.exit(0);
+}

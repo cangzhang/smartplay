@@ -2,7 +2,7 @@
   "name": "smartplay",
   "type": "module",
   "private": true,
-  "main": "crawlee-booking.ts",
+  "main": "booking.ts",
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@types/bun": "latest",
