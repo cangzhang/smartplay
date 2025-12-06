@@ -104,6 +104,7 @@ async function main() {
           log.info(`[${getTimestamp()}] Waiting for queueNum...`);
         }
         log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
+        // await page.waitForTimeout(5 * 1000);
 
         // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
         const queueResponse = await page.request.get(
@@ -113,6 +114,7 @@ async function main() {
               'User-Agent': await page.evaluate(() => navigator.userAgent),
               'Accept': 'application/json',
               'Referer': page.url(),
+              'channel': 'INTERNET',
             }
           }
         );
