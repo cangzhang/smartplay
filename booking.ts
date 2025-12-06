@@ -91,8 +91,16 @@ async function main() {
         log.info(`[${getTimestamp()}] Time to login!`);
         await login(page, log);
         // wait until queueNum is not null
+        let retryCount = 0;
         while (!queueNum) {
+          if (retryCount > 100) {
+            await login(page, log);
+            retryCount = 0;
+            continue;
+          }
+
           await page.waitForTimeout(1000);
+          retryCount++;
           log.info(`[${getTimestamp()}] Waiting for queueNum...`);
         }
         log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
