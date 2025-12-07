@@ -305,7 +305,7 @@ async function main() {
 
   // Helper function to login
   async function login(page: any, log: any) {
-    await page.reload();
+    // await page.reload();
     log.info(`[${getTimestamp()}] Waiting for login form...`);
     // Wait for the login heading to be visible
     await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
