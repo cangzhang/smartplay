@@ -10,14 +10,10 @@ curl -fsSL https://bun.sh/install | bash
 cp .env.example .env
 ```
 
-2. deps
+3. deps
 
 ```console
 bun i 
 ```
 
-3. run
-
-```
-bun run book
-```
+4. double click `run.command`
