@@ -4,6 +4,12 @@
 curl -fsSL https://bun.sh/install | bash
 ```
 
+2. environment variables
+
+```console
+cp .env.example .env
+```
+
 2. deps
 
 ```console
