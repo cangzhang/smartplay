@@ -50,7 +50,7 @@ async function main() {
 
   const crawler = new PlaywrightCrawler({
     launchContext: {
-      launcher: firefox as any,
+      // launcher: firefox as any,
       launchOptions: {
         headless: !isDev,
         devtools: false,
