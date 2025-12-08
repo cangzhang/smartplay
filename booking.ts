@@ -11,7 +11,7 @@ dayjs.extend(timezone);
 nextEnv.loadEnvConfig(process.cwd());
 
 const { USERNAME, PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
-const bot = new TelegramBot(TG_BOT_TOKEN!, { polling: true });
+const bot = new TelegramBot(TG_BOT_TOKEN!);
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -49,6 +49,7 @@ async function main() {
 
   const crawler = new PlaywrightCrawler({
     launchContext: {
+      useIncognitoPages: true,
       launchOptions: {
         headless: !isDev,
         devtools: false,
