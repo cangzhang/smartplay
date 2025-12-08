@@ -49,10 +49,10 @@ async function main() {
 
   const crawler = new PlaywrightCrawler({
     launchContext: {
-      useIncognitoPages: true,
       launchOptions: {
         headless: !isDev,
         devtools: false,
+        args: ['--guest'],
       },
     },
     preNavigationHooks: [
