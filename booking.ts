@@ -123,9 +123,11 @@ async function main() {
         const queueJson = await queueResponse.json();
         log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
 
-        // let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
-        // log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
-        // await page.goto(waitingRoomUrl);
+        if (queueNum) {
+          let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
+          log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
+          await page.goto(waitingRoomUrl);
+        }
         // if there was a modal. click on cancel button
 
 
