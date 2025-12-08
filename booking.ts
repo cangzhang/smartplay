@@ -310,6 +310,10 @@ async function main() {
     // Wait for the login heading to be visible
     await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
 
+    // clear all input fields
+    await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).clear();
+    await page.getByRole('textbox', { name: '密码' }).clear();
+
     log.info(`[${getTimestamp()}] Filling credentials...`);
     await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(USERNAME!);
     await page.getByRole('textbox', { name: '密码' }).fill(PASSWORD!);
