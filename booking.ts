@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import TelegramBot from 'node-telegram-bot-api';
+import { firefox } from 'playwright';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -49,11 +50,10 @@ async function main() {
 
   const crawler = new PlaywrightCrawler({
     launchContext: {
-      useIncognitoPages: true,
+      launcher: firefox as any,
       launchOptions: {
         headless: !isDev,
         devtools: false,
-        args: ['--guest'],
       },
     },
     preNavigationHooks: [
