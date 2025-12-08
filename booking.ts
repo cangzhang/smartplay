@@ -11,7 +11,7 @@ dayjs.extend(timezone);
 
 nextEnv.loadEnvConfig(process.cwd());
 
-const { USERNAME, PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
+const { SP_USERNAME, SP_PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
 const bot = new TelegramBot(TG_BOT_TOKEN!);
 
 const isDev = process.env.NODE_ENV !== 'production';
@@ -30,7 +30,7 @@ const TARGET_IDX = 10; // 5pm - 9pm slots
 async function main() {
   console.log(`[${getTimestamp()}] 🚀 Starting SmartPLAY booking crawler...`);
 
-  if (!USERNAME || !PASSWORD) {
+  if (!SP_USERNAME || !SP_PASSWORD) {
     throw new Error('USERNAME and PASSWORD must be set in environment variables');
   }
 
@@ -312,13 +312,9 @@ async function main() {
     // Wait for the login heading to be visible
     await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
 
-    // clear all input fields
-    await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).clear();
-    await page.getByRole('textbox', { name: '密码' }).clear();
-
     log.info(`[${getTimestamp()}] Filling credentials...`);
-    await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(USERNAME!);
-    await page.getByRole('textbox', { name: '密码' }).fill(PASSWORD!);
+    await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(SP_USERNAME!);
+    await page.getByRole('textbox', { name: '密码' }).fill(SP_PASSWORD!);
 
     log.info(`[${getTimestamp()}] Clicking login button...`);
     await page.getByRole('button', { name: '登入' }).click();
@@ -370,7 +366,7 @@ async function printBookingSummary(result: any) {
     lines.push(`⏰ 已选时间段: 无`);
   }
 
-  lines.push(`👤 用户: ${USERNAME}`);
+  lines.push(`👤 用户: ${SP_USERNAME}`);
   lines.push(`🔐 登录时间: ${result.loginTime ? result.loginTime.format('HH:mm:ss') : 'N/A'}`);
   lines.push(`⏱️  开始时间: ${result.startTime.format('YYYY-MM-DD HH:mm:ss')}`);
   lines.push(`⏱️  结束时间: ${result.endTime ? result.endTime.format('YYYY-MM-DD HH:mm:ss') : 'N/A'}`);
