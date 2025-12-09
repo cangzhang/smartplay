@@ -122,27 +122,16 @@ async function main() {
         const queueJson = await queueResponse.json();
         log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
 
-        if (queueNum) {
-          let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
-          log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
-          await page.goto(waitingRoomUrl);
-        }
-        // if there was a modal. click on cancel button
-
-
-        // try waiting for url change to https://www.smartplay.lcsd.gov.hk/waiting-room*, the url must contain /waiting-room*
-        // if timeout, continue
-        // try {
-        //   await page.waitForURL((url) => url.pathname.includes('/waiting-room'), { timeout: 60 * 1000 });
-        //   log.info(`[${getTimestamp()}] Waiting room found, continuing...`);
-        // } catch (error) {
-        //   log.info(`[${getTimestamp()}] Waiting room not found, continuing...`);
-        // }
-
         let shouldWait = true;
         if (!queueJson?.data) {
           shouldWait = false;
         }
+        if (queueNum && shouldWait) {
+          let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
+          log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
+          await page.goto(waitingRoomUrl);
+        }
+
         if (shouldWait) {
           // if page contains '虚拟等候室'
           const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
