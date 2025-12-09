@@ -199,9 +199,9 @@ async function main() {
             if (!item || !nextItem) continue;
 
             const itemText = await item.textContent() || '';
-            const canCheck1 = await item.$('.session-tag-box-special-primary');
+            const canCheck1 = await item.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
             const nextItemText = await nextItem.textContent() || '';
-            const canCheck2 = await nextItem.$('.session-tag-box-special-primary');
+            const canCheck2 = await nextItem.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
 
             const canCheck = canCheck1 && canCheck2;
 
