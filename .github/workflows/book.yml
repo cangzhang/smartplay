@@ -31,5 +31,5 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Run booking
-        run: bun run book
+        run: bun booking.ts
 
