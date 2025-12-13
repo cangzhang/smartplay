@@ -21,6 +21,7 @@
     "playwright": "^1.55.0"
   },
   "scripts": {
-    "book": "bun run booking.ts"
+    "book": "npx tsx booking.ts",
+    "start": "npx tsx main.ts"
   }
 }
