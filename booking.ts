@@ -143,22 +143,17 @@ async function main() {
           }
         }
 
-        // Navigate to facilities menu
-        log.info(`[${getTimestamp()}] Navigating to facilities...`);
-        await page.locator('.left-menu-continer li:nth-child(2)').click();
-        await page.waitForTimeout(2000);
-
+        // Navigate directly to facilities page
         const sunday = dayjs().add(6, 'day').format('YYYY-MM-DD');
         bookingResult.targetDate = sunday;
         log.info(`[${getTimestamp()}] Target date: ${sunday}`);
 
         const facilitiesUrl = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`;
 
-        await crawler.addRequests([{ url: facilitiesUrl, userData: { step: 'facilities' } }]);
-      }
+        log.info(`[${getTimestamp()}] Navigating directly to facilities: ${facilitiesUrl}`);
+        await page.goto(facilitiesUrl);
 
-      // Handle facility selection page
-      if (url.includes('/facilities/select/court')) {
+        // Handle facility selection
         log.info(`[${getTimestamp()}] On facility selection page`);
 
         try {
