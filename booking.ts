@@ -85,176 +85,174 @@ async function main() {
       });
 
       // Handle home page
-      if (url.includes('/home')) {
-        log.info(`[${getTimestamp()}] Not on facility selection page, waiting until 7am...`);
-        await waitUntil7am(page, log);
+      log.info(`[${getTimestamp()}] Not on facility selection page, waiting until 7am...`);
+      await waitUntil7am(page, log);
 
-        log.info(`[${getTimestamp()}] Time to login!`);
-        await login(page, log);
-        // wait until queueNum is not null
-        let retryCount = 0;
-        while (!queueNum) {
-          if (retryCount > 100) {
-            await login(page, log);
-            retryCount = 0;
-            continue;
+      log.info(`[${getTimestamp()}] Time to login!`);
+      await login(page, log);
+      // wait until queueNum is not null
+      let retryCount = 0;
+      while (!queueNum) {
+        if (retryCount > 100) {
+          await login(page, log);
+          retryCount = 0;
+          continue;
+        }
+
+        await page.waitForTimeout(1000);
+        retryCount++;
+        log.info(`[${getTimestamp()}] Waiting for queueNum...`);
+      }
+      log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
+      // await page.waitForTimeout(5 * 1000);
+
+      // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
+      const queueResponse = await page.request.get(
+        `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
+        {
+          headers: {
+            'User-Agent': await page.evaluate(() => navigator.userAgent),
+            'Accept': 'application/json',
+            'Referer': page.url(),
+            'channel': 'INTERNET',
           }
+        }
+      );
+      const queueJson = await queueResponse.json();
+      log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
 
+      let shouldWait = true;
+      if (!queueJson?.data) {
+        shouldWait = false;
+      }
+      if (queueNum && shouldWait) {
+        let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
+        log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
+        await page.goto(waitingRoomUrl);
+      }
+
+      if (shouldWait) {
+        // if page contains '虚拟等候室'
+        const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
+        if (virtualWaitingRoom) {
+          log.info(`[${getTimestamp()}] Virtual waiting room found, waiting...`);
+          // wait until the page contains '虚拟等候室' is not visible
+          await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
+          log.info(`[${getTimestamp()}] Virtual waiting room disappeared, continuing...`);
+        }
+      }
+
+      // Navigate directly to facilities page
+      const sunday = dayjs().add(6, 'day').format('YYYY-MM-DD');
+      bookingResult.targetDate = sunday;
+      log.info(`[${getTimestamp()}] Target date: ${sunday}`);
+
+      const facilitiesUrl = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`;
+
+      log.info(`[${getTimestamp()}] Navigating directly to facilities: ${facilitiesUrl}`);
+      await page.goto(facilitiesUrl);
+
+      // Handle facility selection
+      log.info(`[${getTimestamp()}] On facility selection page`);
+
+      try {
+        await page.waitForSelector('.facilities-sc-content-all-item', { timeout: 60_000 });
+        log.info(`[${getTimestamp()}] Facility items loaded`);
+
+        // Uncheck all selected items
+        const selectedTags = await page.$$('.session-tag-box-select');
+        log.info(`[${getTimestamp()}] Found ${selectedTags.length} pre-selected tags, unchecking...`);
+        for (const selected of selectedTags) {
+          await selected.click();
+          await page.waitForTimeout(100);
+        }
+
+        // Find and select two consecutive available slots
+        const items = await page.$$('.facilities-sc-content-all-item');
+        log.info(`[${getTimestamp()}] Found ${items.length} time slots`);
+
+        // Target 5pm - 9pm slots (indices 10-13)
+        const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
+
+        let selectedSlots = false;
+        for (let i = TARGET_IDX; i < endIdx; i++) {
+          const item = items[i];
+          const nextItem = items[i + 1];
+
+          if (!item || !nextItem) continue;
+
+          const itemText = await item.textContent() || '';
+          const canCheck1 = await item.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
+          const nextItemText = await nextItem.textContent() || '';
+          const canCheck2 = await nextItem.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
+
+          const canCheck = canCheck1 && canCheck2;
+
+          if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
+            if (!canCheck) {
+              log.info(`[${getTimestamp()}] Slots at ${i} and ${i + 1} are available but not checkable`);
+              continue;
+            }
+
+            log.info(`[${getTimestamp()}] Selecting slots at index ${i} and ${i + 1}`);
+
+            // Get time slot information
+            const slot1Text = await item.textContent() || '';
+            const slot2Text = await nextItem.textContent() || '';
+            bookingResult.slotIndices = [i, i + 1];
+            bookingResult.selectedSlots = [
+              (slot1Text || '').trim().split('\n')[0] || '',
+              (slot2Text || '').trim().split('\n')[0] || ''
+            ];
+
+            await item.click();
+            await page.waitForTimeout(200);
+            await nextItem.click();
+            await page.waitForTimeout(200);
+            selectedSlots = true;
+            log.info(`[${getTimestamp()}] ✅ Successfully selected slots`);
+            break;
+          }
+        }
+
+        if (selectedSlots) {
+          // Proceed to confirm
+          log.info(`[${getTimestamp()}] Clicking continue button...`);
+          await page.getByRole('button', { name: '继续' }).click();
+          await page.waitForTimeout(2000);
+          // Answer no for booking other instruments
+          log.info(`[${getTimestamp()}] Answering questions...`);
+          await page.getByRole('button', { name: '否', exact: true }).click();
           await page.waitForTimeout(1000);
-          retryCount++;
-          log.info(`[${getTimestamp()}] Waiting for queueNum...`);
-        }
-        log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
-        // await page.waitForTimeout(5 * 1000);
 
-        // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
-        const queueResponse = await page.request.get(
-          `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
-          {
-            headers: {
-              'User-Agent': await page.evaluate(() => navigator.userAgent),
-              'Accept': 'application/json',
-              'Referer': page.url(),
-              'channel': 'INTERNET',
-            }
-          }
-        );
-        const queueJson = await queueResponse.json();
-        log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
+          // Confirm to payment
+          log.info(`[${getTimestamp()}] Proceeding to payment...`);
+          await page.getByRole('button', { name: '继续', exact: true }).click();
+          await page.waitForTimeout(2000);
 
-        let shouldWait = true;
-        if (!queueJson?.data) {
-          shouldWait = false;
-        }
-        if (queueNum && shouldWait) {
-          let waitingRoomUrl = `https://www.smartplay.lcsd.gov.hk/waiting-room?loginNum=${queueNum}&authType=INDIVIDUAL`;
-          log.info(`[${getTimestamp()}] Navigating to waiting room: ${waitingRoomUrl}`);
-          await page.goto(waitingRoomUrl);
-        }
+          // Handle health declaration
+          log.info(`[${getTimestamp()}] Completing health declaration...`);
+          await page.getByRole('button', { name: '未能提供' }).first().click();
+          await page.waitForTimeout(500);
+          await page.getByRole('button', { name: '未能提供' }).nth(1).click();
+          await page.waitForTimeout(500);
+          await page.getByRole('button', { name: '确认并同意' }).click();
 
-        if (shouldWait) {
-          // if page contains '虚拟等候室'
-          const virtualWaitingRoom = await page.getByText('虚拟等候室').isVisible();
-          if (virtualWaitingRoom) {
-            log.info(`[${getTimestamp()}] Virtual waiting room found, waiting...`);
-            // wait until the page contains '虚拟等候室' is not visible
-            await page.waitForSelector('text=虚拟等候室', { state: 'hidden', timeout: 60 * 60 * 1000 });
-            log.info(`[${getTimestamp()}] Virtual waiting room disappeared, continuing...`);
-          }
-        }
-
-        // Navigate directly to facilities page
-        const sunday = dayjs().add(6, 'day').format('YYYY-MM-DD');
-        bookingResult.targetDate = sunday;
-        log.info(`[${getTimestamp()}] Target date: ${sunday}`);
-
-        const facilitiesUrl = `https://www.smartplay.lcsd.gov.hk/facilities/select/court?venueId=207&fatId=311&venueName=%E7%9F%B3%E5%A1%98%E5%92%80%E4%BD%93%E8%82%B2%E9%A6%86&sessionIndex=0&dateIndex=0&playDate=${sunday}&district=CW,EN,SN,WCH&typeCode=DNRM&keywords=&sportCode=DAAC&frmFilterType=&isFree=false`;
-
-        log.info(`[${getTimestamp()}] Navigating directly to facilities: ${facilitiesUrl}`);
-        await page.goto(facilitiesUrl);
-
-        // Handle facility selection
-        log.info(`[${getTimestamp()}] On facility selection page`);
-
-        try {
-          await page.waitForSelector('.facilities-sc-content-all-item', { timeout: 60_000 });
-          log.info(`[${getTimestamp()}] Facility items loaded`);
-
-          // Uncheck all selected items
-          const selectedTags = await page.$$('.session-tag-box-select');
-          log.info(`[${getTimestamp()}] Found ${selectedTags.length} pre-selected tags, unchecking...`);
-          for (const selected of selectedTags) {
-            await selected.click();
-            await page.waitForTimeout(100);
-          }
-
-          // Find and select two consecutive available slots
-          const items = await page.$$('.facilities-sc-content-all-item');
-          log.info(`[${getTimestamp()}] Found ${items.length} time slots`);
-
-          // Target 5pm - 9pm slots (indices 10-13)
-          const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
-
-          let selectedSlots = false;
-          for (let i = TARGET_IDX; i < endIdx; i++) {
-            const item = items[i];
-            const nextItem = items[i + 1];
-
-            if (!item || !nextItem) continue;
-
-            const itemText = await item.textContent() || '';
-            const canCheck1 = await item.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
-            const nextItemText = await nextItem.textContent() || '';
-            const canCheck2 = await nextItem.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
-
-            const canCheck = canCheck1 && canCheck2;
-
-            if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
-              if (!canCheck) {
-                log.info(`[${getTimestamp()}] Slots at ${i} and ${i + 1} are available but not checkable`);
-                continue;
-              }
-
-              log.info(`[${getTimestamp()}] Selecting slots at index ${i} and ${i + 1}`);
-
-              // Get time slot information
-              const slot1Text = await item.textContent() || '';
-              const slot2Text = await nextItem.textContent() || '';
-              bookingResult.slotIndices = [i, i + 1];
-              bookingResult.selectedSlots = [
-                (slot1Text || '').trim().split('\n')[0] || '',
-                (slot2Text || '').trim().split('\n')[0] || ''
-              ];
-
-              await item.click();
-              await page.waitForTimeout(200);
-              await nextItem.click();
-              await page.waitForTimeout(200);
-              selectedSlots = true;
-              log.info(`[${getTimestamp()}] ✅ Successfully selected slots`);
-              break;
-            }
-          }
-
-          if (selectedSlots) {
-            // Proceed to confirm
-            log.info(`[${getTimestamp()}] Clicking continue button...`);
-            await page.getByRole('button', { name: '继续' }).click();
-            await page.waitForTimeout(2000);
-            // Answer no for booking other instruments
-            log.info(`[${getTimestamp()}] Answering questions...`);
-            await page.getByRole('button', { name: '否', exact: true }).click();
-            await page.waitForTimeout(1000);
-
-            // Confirm to payment
-            log.info(`[${getTimestamp()}] Proceeding to payment...`);
-            await page.getByRole('button', { name: '继续', exact: true }).click();
-            await page.waitForTimeout(2000);
-
-            // Handle health declaration
-            log.info(`[${getTimestamp()}] Completing health declaration...`);
-            await page.getByRole('button', { name: '未能提供' }).first().click();
-            await page.waitForTimeout(500);
-            await page.getByRole('button', { name: '未能提供' }).nth(1).click();
-            await page.waitForTimeout(500);
-            await page.getByRole('button', { name: '确认并同意' }).click();
-
-            bookingResult.status = 'success';
-            bookingResult.endTime = dayjs();
-            log.info(`[${getTimestamp()}] ✅ Booking completed successfully!`);
-          } else {
-            bookingResult.status = 'failed';
-            bookingResult.endTime = dayjs();
-            bookingResult.error = 'No available consecutive slots found';
-            log.error(`[${getTimestamp()}] ❌ No available consecutive slots found`);
-          }
-        } catch (error) {
+          bookingResult.status = 'success';
+          bookingResult.endTime = dayjs();
+          log.info(`[${getTimestamp()}] ✅ Booking completed successfully!`);
+        } else {
           bookingResult.status = 'failed';
           bookingResult.endTime = dayjs();
-          bookingResult.error = String(error);
-          log.error(`[${getTimestamp()}] Error during booking process: ${error}`);
-          throw error;
+          bookingResult.error = 'No available consecutive slots found';
+          log.error(`[${getTimestamp()}] ❌ No available consecutive slots found`);
         }
+      } catch (error) {
+        bookingResult.status = 'failed';
+        bookingResult.endTime = dayjs();
+        bookingResult.error = String(error);
+        log.error(`[${getTimestamp()}] Error during booking process: ${error}`);
+        throw error;
       }
     },
     maxRequestsPerCrawl: 10,
