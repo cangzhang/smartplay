@@ -85,7 +85,6 @@ async function main() {
       });
 
       // Handle home page
-      log.info(`[${getTimestamp()}] Not on facility selection page, waiting until 7am...`);
       await waitUntil7am(page, log);
 
       log.info(`[${getTimestamp()}] Time to login!`);
@@ -107,19 +106,24 @@ async function main() {
       // await page.waitForTimeout(5 * 1000);
 
       // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
-      const queueResponse = await page.request.get(
-        `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
-        {
-          headers: {
-            'User-Agent': await page.evaluate(() => navigator.userAgent),
-            'Accept': 'application/json',
-            'Referer': page.url(),
-            'channel': 'INTERNET',
+      let queueJson: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        log.info(`[${getTimestamp()}] Queue request attempt ${attempt}/3`);
+        const queueResponse = await page.request.get(
+          `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
+          {
+            headers: {
+              'User-Agent': await page.evaluate(() => navigator.userAgent),
+              'Accept': 'application/json',
+              'Referer': page.url(),
+              'channel': 'INTERNET',
+            }
           }
-        }
-      );
-      const queueJson = await queueResponse.json();
-      log.info(`[${getTimestamp()}] Queue response: ${JSON.stringify(queueJson)}`);
+        );
+        queueJson = await queueResponse.json();
+        await page.waitForTimeout(1000);
+        log.info(`[${getTimestamp()}] Queue response (attempt ${attempt}): ${JSON.stringify(queueJson)}`);
+      }
 
       let shouldWait = true;
       if (!queueJson?.data) {
@@ -246,6 +250,7 @@ async function main() {
           bookingResult.endTime = dayjs();
           bookingResult.error = 'No available consecutive slots found';
           log.error(`[${getTimestamp()}] ❌ No available consecutive slots found`);
+          throw new Error('No available consecutive slots found');
         }
       } catch (error) {
         bookingResult.status = 'failed';
@@ -375,12 +380,25 @@ async function printBookingSummary(result: any) {
 }
 
 (async function () {
-  try {
-    await main();
-    exit(0);
-  } catch (error) {
-    console.error(`[${getTimestamp()}] Fatal error:`, error);
-    exit(1);
+  const MAX_ATTEMPTS = 3;
+  
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      console.log(`[${getTimestamp()}] 🔄 Booking attempt ${attempt}/${MAX_ATTEMPTS}`);
+      await main();
+      console.log(`[${getTimestamp()}] ✅ Booking process completed on attempt ${attempt}`);
+      exit(0);
+    } catch (error) {
+      console.error(`[${getTimestamp()}] ❌ Attempt ${attempt}/${MAX_ATTEMPTS} failed:`, error);
+      
+      if (attempt < MAX_ATTEMPTS) {
+        console.log(`[${getTimestamp()}] ⏳ Retrying in 3 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } else {
+        console.error(`[${getTimestamp()}] 💀 All ${MAX_ATTEMPTS} attempts failed`);
+        exit(1);
+      }
+    }
   }
 })()
 
