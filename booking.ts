@@ -63,9 +63,9 @@ async function main() {
           localStorage.setItem('devtools', `${dt}`);
           localStorage.setItem('webapplanguage', 'zh-cn');
         });
-        // await playwrightUtils.blockRequests(page, {
-        //   urlPatterns: ['*.ttf'],
-        // });
+        await playwrightUtils.blockRequests(page, {
+          urlPatterns: ['*.ttf', '.png', '.jpg', '.gif'],
+        });
       },
     ],
     requestHandler: async ({ page, request, log }) => {
