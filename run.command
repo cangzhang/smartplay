@@ -1,3 +1,4 @@
 #!/bin/bash
 
-bun run book
+cd "$(dirname "$0")"
+bun booking.ts

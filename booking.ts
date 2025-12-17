@@ -26,7 +26,7 @@ const TARGET_IDX = 10; // 5pm - 9pm slots
 // 需求：预定每周日晚上4～8点，任意连续两个小时的舞蹈室或者活动室（大），石塘咀体育馆
 // 每周一早上7点放号
 
-async function main() {
+async function main(isRetry = false) {
   console.log(`[${getTimestamp()}] 🚀 Starting SmartPLAY booking crawler...`);
 
   if (!SP_USERNAME || !SP_PASSWORD) {
@@ -87,8 +87,12 @@ async function main() {
       // Handle home page
       await waitUntil7am(page, log);
 
-      log.info(`[${getTimestamp()}] Time to login!`);
-      await login(page, log);
+      if (!isRetry) {
+        log.info(`[${getTimestamp()}] Time to login!`);
+        await login(page, log);
+      } else {
+        log.info(`[${getTimestamp()}] Skipping login (retry attempt)`);
+      }
       // wait until queueNum is not null
       let retryCount = 0;
       while (!queueNum) {
@@ -257,7 +261,6 @@ async function main() {
         bookingResult.endTime = dayjs();
         bookingResult.error = String(error);
         log.error(`[${getTimestamp()}] Error during booking process: ${error}`);
-        throw error;
       }
     },
     maxRequestsPerCrawl: 10,
@@ -313,10 +316,18 @@ async function main() {
   }
 
   // Start crawling
-  await crawler.run(['https://www.smartplay.lcsd.gov.hk/home']);
+  try {
+    await crawler.run(['https://www.smartplay.lcsd.gov.hk/home']);
+  } catch (error) {
+    bookingResult.status = 'failed';
+    bookingResult.endTime = dayjs();
+    bookingResult.error = String(error);
+  }
 
   // Print beautiful summary
   await printBookingSummary(bookingResult);
+
+  return bookingResult;
 }
 
 async function printBookingSummary(result: any) {
@@ -381,16 +392,18 @@ async function printBookingSummary(result: any) {
 
 (async function () {
   const MAX_ATTEMPTS = 3;
-  
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      console.log(`[${getTimestamp()}] 🔄 Booking attempt ${attempt}/${MAX_ATTEMPTS}`);
-      await main();
+    const isRetry = attempt > 1;
+    console.log(`[${getTimestamp()}] 🔄 Booking attempt ${attempt}/${MAX_ATTEMPTS}`);
+    const result = await main(isRetry);
+
+    if (result.status === 'success') {
       console.log(`[${getTimestamp()}] ✅ Booking process completed on attempt ${attempt}`);
       exit(0);
-    } catch (error) {
-      console.error(`[${getTimestamp()}] ❌ Attempt ${attempt}/${MAX_ATTEMPTS} failed:`, error);
-      
+    } else {
+      console.error(`[${getTimestamp()}] ❌ Attempt ${attempt}/${MAX_ATTEMPTS} failed:`, result.error);
+
       if (attempt < MAX_ATTEMPTS) {
         console.log(`[${getTimestamp()}] ⏳ Retrying in 3 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
