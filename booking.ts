@@ -73,13 +73,27 @@ async function main(isRetry = false) {
       const url = request.url;
       let queueNum = null;
       // intercept request to /rest/patron/api/v1/publ/queue
-      await page.route('https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue', async (route) => {
-        const response = await route.fetch();
+      // NOTE: When running under Bun, Playwright's internal cookie parsing can fail if it sees a relative response URL.
+      // We force an absolute URL for the underlying fetch and preserve response headers.
+      await page.route('**/rest/patron/api/v1/publ/queue', async (route) => {
+        const reqUrl = route.request().url();
+        const absUrl = reqUrl.startsWith('https')
+          ? reqUrl
+          : `https://www.smartplay.lcsd.gov.hk${reqUrl.startsWith('/') ? '' : '/'}${reqUrl}`;
+
+        const response = await route.fetch({ url: absUrl });
         const json = await response.json();
+
         queueNum = json.data?.queueNum;
         log.info(`[${getTimestamp()}] queueNum: ${queueNum}`);
-        route.fulfill({
+
+        const headers = response.headers();
+        // Ensure content-type is present for fulfilled response
+        if (!headers['content-type']) headers['content-type'] = 'application/json';
+
+        await route.fulfill({
           status: response.status(),
+          headers,
           body: JSON.stringify(json),
         });
       });
@@ -391,28 +405,17 @@ async function printBookingSummary(result: any) {
 }
 
 (async function () {
-  const MAX_ATTEMPTS = 3;
+  console.log(`[${getTimestamp()}] 🔄 Booking attempt 1/1`);
+  const result = await main(false);
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const isRetry = attempt > 1;
-    console.log(`[${getTimestamp()}] 🔄 Booking attempt ${attempt}/${MAX_ATTEMPTS}`);
-    const result = await main(isRetry);
-
-    if (result.status === 'success') {
-      console.log(`[${getTimestamp()}] ✅ Booking process completed on attempt ${attempt}`);
-      exit(0);
-    } else {
-      console.error(`[${getTimestamp()}] ❌ Attempt ${attempt}/${MAX_ATTEMPTS} failed:`, result.error);
-
-      if (attempt < MAX_ATTEMPTS) {
-        console.log(`[${getTimestamp()}] ⏳ Retrying in 3 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } else {
-        console.error(`[${getTimestamp()}] 💀 All ${MAX_ATTEMPTS} attempts failed`);
-        exit(1);
-      }
-    }
+  if (result.status === 'success') {
+    console.log(`[${getTimestamp()}] ✅ Booking process completed`);
+    exit(0);
+    return;
   }
+
+  console.error(`[${getTimestamp()}] ❌ Booking attempt failed:`, result.error);
+  exit(1);
 })()
 
 function exit(code: number) {
