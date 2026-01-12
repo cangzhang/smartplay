@@ -1,6 +1,7 @@
 import { PlaywrightCrawler, playwrightUtils } from 'crawlee';
 import nextEnv from '@next/env';
 import dayjs from 'dayjs';
+import path from 'node:path';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import TelegramBot from 'node-telegram-bot-api';
@@ -14,6 +15,7 @@ const { SP_USERNAME, SP_PASSWORD, TG_BOT_TOKEN, TG_CHAT_ID } = process.env;
 const bot = new TelegramBot(TG_BOT_TOKEN!);
 
 const isDev = process.env.NODE_ENV !== 'production';
+const userDataDir = path.join(process.cwd(), 'storage', 'user-data');
 
 // Helper function to get formatted timestamp
 function getTimestamp(): string {
@@ -50,6 +52,8 @@ async function main(isRetry = false) {
   const crawler = new PlaywrightCrawler({
     launchContext: {
       // launcher: firefox as any,
+      userDataDir,
+      useIncognitoPages: false,
       launchOptions: {
         headless: !isDev,
         devtools: false,
@@ -313,9 +317,17 @@ async function main(isRetry = false) {
   // Helper function to login
   async function login(page: any, log: any) {
     // await page.reload();
-    log.info(`[${getTimestamp()}] Waiting for login form...`);
-    // Wait for the login heading to be visible
-    await page.waitForSelector('text=登入 SmartPLAY', { timeout: 30_000 });
+    log.info(`[${getTimestamp()}] Checking for existing session...`);
+    const loginFormVisible = await page
+      .waitForSelector('text=登入 SmartPLAY', { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!loginFormVisible) {
+      bookingResult.loginTime = dayjs();
+      log.info(`[${getTimestamp()}] ✅ Existing session found, skipping login`);
+      return;
+    }
 
     log.info(`[${getTimestamp()}] Filling credentials...`);
     await page.getByRole('textbox', { name: 'SmartPLAY用户帐号或别名' }).fill(SP_USERNAME!);
