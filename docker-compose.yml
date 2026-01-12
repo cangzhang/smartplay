@@ -5,3 +5,18 @@ services:
     volumes:
       - ./storage:/app/storage
     shm_size: "4gb"
+
+  ofelia:
+    image: mcuadros/ofelia:latest
+    command: daemon --docker
+    environment:
+      TZ: Asia/Hong_Kong
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./storage:/app/storage
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-run.smartplay.schedule: "56 6 * * *"
+      ofelia.job-run.smartplay.image: "ghcr.io/cangzhang/smartplay:latest"
+      ofelia.job-run.smartplay.volume: "${PWD}/storage:/app/storage"
+      ofelia.job-run.smartplay.environment: '["SP_USERNAME=${SP_USERNAME}","SP_PASSWORD=${SP_PASSWORD}","TG_BOT_TOKEN=${TG_BOT_TOKEN}","TG_CHAT_ID=${TG_CHAT_ID}"]'
