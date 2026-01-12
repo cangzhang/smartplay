@@ -1,6 +1,7 @@
 services:
   smartplay:
     image: ghcr.io/cangzhang/smartplay:latest
+    profiles: ["manual"]
     env_file: .env
     volumes:
       - ./storage:/app/storage
