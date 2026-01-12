@@ -14,6 +14,7 @@ services:
       TZ: Asia/Hong_Kong
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
       - ./storage:/app/storage
     labels:
       ofelia.enabled: "true"
