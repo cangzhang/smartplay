@@ -8,17 +8,16 @@ services:
     shm_size: "4gb"
 
   ofelia:
-    image: mcuadros/ofelia:latest
+    image: mcuadros/ofelia:v0.3.20
     command: daemon --docker
     environment:
       TZ: Asia/Hong_Kong
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/localtime:/etc/localtime:ro
-      - ./storage:/app/storage
     labels:
       ofelia.enabled: "true"
-      ofelia.job-run.smartplay.schedule: "CRON_TZ=Asia/Hong_Kong 0 56 6 * * *"
+      ofelia.job-run.smartplay.schedule: "0 56 6 * * *"
       ofelia.job-run.smartplay.image: "ghcr.io/cangzhang/smartplay:latest"
-      ofelia.job-run.smartplay.volume: "${PWD}/storage:/app/storage"
-      ofelia.job-run.smartplay.environment: '["SP_USERNAME=${SP_USERNAME}","SP_PASSWORD=${SP_PASSWORD}","TG_BOT_TOKEN=${TG_BOT_TOKEN}","TG_CHAT_ID=${TG_CHAT_ID}"]'
+      ofelia.job-run.smartplay.volume: '["${PWD}/storage:/app/storage", "/dev/shm:/dev/shm"]'
+      ofelia.job-run.smartplay.environment: '["SP_USERNAME=${SP_USERNAME}","SP_PASSWORD=${SP_PASSWORD}","TG_BOT_TOKEN=${TG_BOT_TOKEN}","TG_CHAT_ID=${TG_CHAT_ID}","NODE_ENV=production"]'
