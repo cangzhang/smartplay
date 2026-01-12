@@ -75,32 +75,7 @@ async function main(isRetry = false) {
     requestHandler: async ({ page, request, log }) => {
       log.info(`[${getTimestamp()}] Processing ${request.url}`);
       const url = request.url;
-      let queueNum = null;
-      // intercept request to /rest/patron/api/v1/publ/queue
-      // NOTE: When running under Bun, Playwright's internal cookie parsing can fail if it sees a relative response URL.
-      // We force an absolute URL for the underlying fetch and preserve response headers.
-      await page.route('**/rest/patron/api/v1/publ/queue', async (route) => {
-        const reqUrl = route.request().url();
-        const absUrl = reqUrl.startsWith('https')
-          ? reqUrl
-          : `https://www.smartplay.lcsd.gov.hk${reqUrl.startsWith('/') ? '' : '/'}${reqUrl}`;
-
-        const response = await route.fetch({ url: absUrl });
-        const json = await response.json();
-
-        queueNum = json.data?.queueNum;
-        log.info(`[${getTimestamp()}] queueNum: ${queueNum}`);
-
-        const headers = response.headers();
-        // Ensure content-type is present for fulfilled response
-        if (!headers['content-type']) headers['content-type'] = 'application/json';
-
-        await route.fulfill({
-          status: response.status(),
-          headers,
-          body: JSON.stringify(json),
-        });
-      });
+      let queueNum: string | null = null;
 
       // Handle home page
       await waitUntil7am(page, log);
@@ -111,23 +86,11 @@ async function main(isRetry = false) {
       } else {
         log.info(`[${getTimestamp()}] Skipping login (retry attempt)`);
       }
-      // wait until queueNum is not null
-      let retryCount = 0;
-      while (!queueNum) {
-        if (retryCount > 100) {
-          await login(page, log);
-          retryCount = 0;
-          continue;
-        }
 
-        await page.waitForTimeout(1000);
-        retryCount++;
-        log.info(`[${getTimestamp()}] Waiting for queueNum...`);
-      }
-      log.info(`[${getTimestamp()}] Queue num found: ${queueNum}`);
+      queueNum = await waitForQueueNum(page, log);
+      log.info(`[${getTimestamp()}] queueNum found: ${queueNum}`);
       // await page.waitForTimeout(5 * 1000);
 
-      // perform request https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}
       let queueJson: any = null;
       for (let attempt = 1; attempt <= 3; attempt++) {
         log.info(`[${getTimestamp()}] Queue request attempt ${attempt}/3`);
@@ -135,7 +98,6 @@ async function main(isRetry = false) {
           `https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue/${queueNum}`,
           {
             headers: {
-              'User-Agent': await page.evaluate(() => navigator.userAgent),
               'Accept': 'application/json',
               'Referer': page.url(),
               'channel': 'INTERNET',
@@ -182,62 +144,79 @@ async function main(isRetry = false) {
       log.info(`[${getTimestamp()}] On facility selection page`);
 
       try {
-        await page.waitForSelector('.facilities-sc-content-all-item', { timeout: 60_000 });
-        log.info(`[${getTimestamp()}] Facility items loaded`);
-
-        // Uncheck all selected items
-        const selectedTags = await page.$$('.session-tag-box-select');
-        log.info(`[${getTimestamp()}] Found ${selectedTags.length} pre-selected tags, unchecking...`);
-        for (const selected of selectedTags) {
-          await selected.click();
-          await page.waitForTimeout(100);
-        }
-
-        // Find and select two consecutive available slots
-        const items = await page.$$('.facilities-sc-content-all-item');
-        log.info(`[${getTimestamp()}] Found ${items.length} time slots`);
-
-        // Target 5pm - 9pm slots (indices 10-13)
-        const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
+        const slotCheckStart = dayjs();
+        const slotCheckDeadline = slotCheckStart.add(20, 'minute');
+        log.info(
+          `[${getTimestamp()}] Slot checking started at ${slotCheckStart.format('HH:mm:ss')}, will retry until ${slotCheckDeadline.format('HH:mm:ss')}`
+        );
 
         let selectedSlots = false;
-        for (let i = TARGET_IDX; i < endIdx; i++) {
-          const item = items[i];
-          const nextItem = items[i + 1];
+        while (!selectedSlots && dayjs().isBefore(slotCheckDeadline)) {
+          await page.waitForSelector('.facilities-sc-content-all-item', { timeout: 60_000 });
+          log.info(`[${getTimestamp()}] Facility items loaded`);
 
-          if (!item || !nextItem) continue;
+          // Uncheck all selected items
+          const selectedTags = await page.$$('.session-tag-box-select');
+          log.info(`[${getTimestamp()}] Found ${selectedTags.length} pre-selected tags, unchecking...`);
+          for (const selected of selectedTags) {
+            await selected.click();
+            await page.waitForTimeout(100);
+          }
 
-          const itemText = await item.textContent() || '';
-          const canCheck1 = await item.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
-          const nextItemText = await nextItem.textContent() || '';
-          const canCheck2 = await nextItem.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
+          // Find and select two consecutive available slots
+          const items = await page.$$('.facilities-sc-content-all-item');
+          log.info(`[${getTimestamp()}] Found ${items.length} time slots`);
 
-          const canCheck = canCheck1 && canCheck2;
+          // Target 5pm - 9pm slots (indices 10-13)
+          const endIdx = Math.min(TARGET_IDX + 4, items.length - 1);
 
-          if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
-            if (!canCheck) {
-              log.info(`[${getTimestamp()}] Slots at ${i} and ${i + 1} are available but not checkable`);
-              continue;
+          for (let i = TARGET_IDX; i < endIdx; i++) {
+            const item = items[i];
+            const nextItem = items[i + 1];
+
+            if (!item || !nextItem) continue;
+
+            const itemText = await item.textContent() || '';
+            const canCheck1 = await item.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
+            const nextItemText = await nextItem.textContent() || '';
+            const canCheck2 = await nextItem.$('.session-tag-box-special-primary, .session-tag-box-peak-hour');
+
+            const canCheck = canCheck1 && canCheck2;
+
+            if (itemText.includes('可供租订') && nextItemText.includes('可供租订')) {
+              if (!canCheck) {
+                log.info(`[${getTimestamp()}] Slots at ${i} and ${i + 1} are available but not checkable`);
+                continue;
+              }
+
+              log.info(`[${getTimestamp()}] Selecting slots at index ${i} and ${i + 1}`);
+
+              // Get time slot information
+              const slot1Text = await item.textContent() || '';
+              const slot2Text = await nextItem.textContent() || '';
+              bookingResult.slotIndices = [i, i + 1];
+              bookingResult.selectedSlots = [
+                (slot1Text || '').trim().split('\n')[0] || '',
+                (slot2Text || '').trim().split('\n')[0] || ''
+              ];
+
+              await item.click();
+              await page.waitForTimeout(200);
+              await nextItem.click();
+              await page.waitForTimeout(200);
+              selectedSlots = true;
+              log.info(`[${getTimestamp()}] ✅ Successfully selected slots`);
+              break;
             }
+          }
 
-            log.info(`[${getTimestamp()}] Selecting slots at index ${i} and ${i + 1}`);
-
-            // Get time slot information
-            const slot1Text = await item.textContent() || '';
-            const slot2Text = await nextItem.textContent() || '';
-            bookingResult.slotIndices = [i, i + 1];
-            bookingResult.selectedSlots = [
-              (slot1Text || '').trim().split('\n')[0] || '',
-              (slot2Text || '').trim().split('\n')[0] || ''
-            ];
-
-            await item.click();
-            await page.waitForTimeout(200);
-            await nextItem.click();
-            await page.waitForTimeout(200);
-            selectedSlots = true;
-            log.info(`[${getTimestamp()}] ✅ Successfully selected slots`);
-            break;
+          if (!selectedSlots && dayjs().isBefore(slotCheckDeadline)) {
+            const elapsedMinutes = dayjs().diff(slotCheckStart, 'minute', true);
+            log.info(
+              `[${getTimestamp()}] No consecutive slots yet, refreshing in 10s (elapsed ${elapsedMinutes.toFixed(1)} min)...`
+            );
+            await page.waitForTimeout(10_000);
+            await page.reload({ waitUntil: 'domcontentloaded' });
           }
         }
 
@@ -270,9 +249,9 @@ async function main(isRetry = false) {
         } else {
           bookingResult.status = 'failed';
           bookingResult.endTime = dayjs();
-          bookingResult.error = 'No available consecutive slots found';
-          log.error(`[${getTimestamp()}] ❌ No available consecutive slots found`);
-          throw new Error('No available consecutive slots found');
+          bookingResult.error = 'No available consecutive slots found within 20 minutes';
+          log.error(`[${getTimestamp()}] ❌ No available consecutive slots found within 20 minutes`);
+          throw new Error('No available consecutive slots found within 20 minutes');
         }
       } catch (error) {
         bookingResult.status = 'failed';
@@ -314,11 +293,51 @@ async function main(isRetry = false) {
     log.info(`[${getTimestamp()}] It's 7am HKT! Starting booking process...`);
   }
 
+  async function waitForQueueNum(page: any, log: any) {
+    if (!SP_USERNAME) {
+      throw new Error('USERNAME must be set in environment variables');
+    }
+
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      log.info(`[${getTimestamp()}] Requesting queueNum (attempt ${attempt}/5)...`);
+
+      try {
+        const response = await page.request.post(
+          'https://www.smartplay.lcsd.gov.hk/rest/patron/api/v1/publ/queue',
+          {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Referer': page.url(),
+              'channel': 'INTERNET',
+            },
+            data: {
+              loginId: SP_USERNAME,
+            },
+          }
+        );
+
+        const json = await response.json();
+        if (json.data?.queueNum != null) {
+          log.info(`[${getTimestamp()}] queue response captured: ${JSON.stringify(json)}`);
+          return String(json.data.queueNum);
+        }
+        log.info(`[${getTimestamp()}] queue response missing queueNum: ${JSON.stringify(json)}`);
+      } catch (error) {
+        log.info(`[${getTimestamp()}] Failed to request queue response: ${error}`);
+      }
+
+      await page.waitForTimeout(1_000);
+    }
+
+    throw new Error('Unable to capture queueNum from queue response');
+  }
+
   // Helper function to login
   async function login(page: any, log: any) {
     // await page.reload();
     log.info(`[${getTimestamp()}] Checking for existing session...`);
-    const loginFormVisible = await page
+    let loginFormVisible = await page
       .waitForSelector('text=登入 SmartPLAY', { timeout: 5_000 })
       .then(() => true)
       .catch(() => false);
@@ -326,6 +345,19 @@ async function main(isRetry = false) {
     if (!loginFormVisible) {
       bookingResult.loginTime = dayjs();
       log.info(`[${getTimestamp()}] ✅ Existing session found, skipping login`);
+      return;
+    }
+
+    log.info(`[${getTimestamp()}] Login page detected after session restore, refreshing...`);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    loginFormVisible = await page
+      .waitForSelector('text=登入 SmartPLAY', { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!loginFormVisible) {
+      bookingResult.loginTime = dayjs();
+      log.info(`[${getTimestamp()}] ✅ Session restored after refresh, skipping login`);
       return;
     }
 
