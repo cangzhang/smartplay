@@ -1,0 +1,7 @@
+services:
+  smartplay:
+    build: .
+    env_file: .env
+    volumes:
+      - ./storage:/app/storage
+    shm_size: "1gb"

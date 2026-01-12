@@ -1,6 +1,10 @@
-FROM apify/actor-node-playwright-chrome:24
+FROM mcr.microsoft.com/playwright:v1.57.0-noble
+
+WORKDIR /app
 
 COPY . ./
-RUN npm install
+RUN npm install --production
 
-CMD ["npm", "run", "start"]
+ENV NODE_ENV=production
+
+CMD ["npm", "run", "book"]
