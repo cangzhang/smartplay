@@ -1,7 +1,7 @@
 services:
   smartplay:
-    build: .
+    image: ghcr.io/cangzhang/smartplay:latest
     env_file: .env
     volumes:
       - ./storage:/app/storage
-    shm_size: "1gb"
+    shm_size: "4gb"
