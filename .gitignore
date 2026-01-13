@@ -46,3 +46,6 @@ storage/
 # Added by Apify CLI
 storage
 .venv
+
+docker-compose.override.yml
+docker-compose.override.yaml
