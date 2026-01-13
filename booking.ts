@@ -76,6 +76,32 @@ async function main(isRetry = false) {
       log.info(`[${getTimestamp()}] Processing ${request.url}`);
       const url = request.url;
       let queueNum: string | null = null;
+      let interceptedQueueNum: string | null = null;
+
+      // Set up route interception BEFORE login to capture queueNum from page's own request
+      log.info(`[${getTimestamp()}] Setting up route interception for queue API...`);
+      await page.route('**/rest/patron/api/v1/publ/queue', async (route: any) => {
+        const req = route.request();
+        
+        // Only intercept POST requests (the initial queue creation)
+        if (req.method() === 'POST') {
+          log.info(`[${getTimestamp()}] Intercepted queue POST request from page`);
+          const response = await route.fetch();
+          const json = await response.json();
+          
+          if (json.data?.queueNum != null) {
+            interceptedQueueNum = String(json.data.queueNum);
+            log.info(`[${getTimestamp()}] Intercepted queueNum: ${interceptedQueueNum}`);
+          } else {
+            log.info(`[${getTimestamp()}] Intercepted queue response missing queueNum: ${JSON.stringify(json)}`);
+          }
+          
+          // Fulfill with the original response
+          await route.fulfill({ response });
+        } else {
+          await route.continue();
+        }
+      });
 
       // Handle home page
       await waitUntil7am(page, log);
@@ -87,7 +113,7 @@ async function main(isRetry = false) {
         log.info(`[${getTimestamp()}] Skipping login (retry attempt)`);
       }
 
-      queueNum = await waitForQueueNum(page, log);
+      queueNum = await waitForQueueNum(page, log, () => interceptedQueueNum);
       log.info(`[${getTimestamp()}] queueNum found: ${queueNum}`);
       // await page.waitForTimeout(5 * 1000);
 
@@ -293,13 +319,30 @@ async function main(isRetry = false) {
     log.info(`[${getTimestamp()}] It's 7am HKT! Starting booking process...`);
   }
 
-  async function waitForQueueNum(page: any, log: any) {
+  async function waitForQueueNum(page: any, log: any, getInterceptedQueueNum: () => string | null) {
     if (!SP_USERNAME) {
       throw new Error('USERNAME must be set in environment variables');
     }
 
+    // First, wait for intercepted queueNum from page's own request
+    log.info(`[${getTimestamp()}] Waiting for intercepted queueNum...`);
+    for (let i = 0; i < 10; i++) {
+      const intercepted = getInterceptedQueueNum();
+      if (intercepted) {
+        log.info(`[${getTimestamp()}] queueNum intercepted from page: ${intercepted}`);
+        await page.unroute('**/rest/patron/api/v1/publ/queue');
+        return intercepted;
+      }
+      await page.waitForTimeout(500);
+    }
+
+    // Remove route handler before making manual requests
+    await page.unroute('**/rest/patron/api/v1/publ/queue');
+    log.info(`[${getTimestamp()}] No intercepted queueNum, falling back to manual request...`);
+
+    // Fall back to manual request if interception didn't capture it
     for (let attempt = 1; attempt <= 5; attempt++) {
-      log.info(`[${getTimestamp()}] Requesting queueNum (attempt ${attempt}/5)...`);
+      log.info(`[${getTimestamp()}] Requesting queueNum manually (attempt ${attempt}/5)...`);
 
       try {
         const response = await page.request.post(
